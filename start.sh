@@ -1,0 +1,1 @@
+./yaml2sqlite -DataPath ~/code/xvi-wiek/data -OutputFile xvi-wiek.db
