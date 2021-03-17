@@ -13,4 +13,6 @@
 
 # Dependency directories (remove the comment below to include it)
 # vendor/
-./yaml2sqlite
+yaml2sqlite
+!./cmd/yaml2sqlite
+xvi-wiek.db

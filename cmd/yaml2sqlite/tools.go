@@ -2,8 +2,9 @@ package main
 
 import (
 	"bytes"
-	"fmt"
+	"database/sql"
 	"io/ioutil"
+	"log"
 	"os"
 	"path"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	_ "github.com/mattn/go-sqlite3"
 	"gopkg.in/yaml.v2"
 )
 
@@ -22,6 +24,12 @@ func filenameWithoutExtension(fn string) string {
 // czy też program skompilowany, funkcja dla systemu Linux
 func isRunByRun() bool {
 	return strings.Contains(os.Args[0], "/tmp/go-build")
+}
+
+// czy plik istnieje
+func fileExists(filename string) bool {
+	_, err := os.Stat(filename)
+	return !os.IsNotExist(err)
 }
 
 // readFact func - czyta dane wydarzeń historycznych z pliku yaml
@@ -99,7 +107,102 @@ func (app *application) loadData(path string) error {
 	return nil
 }
 
+// funkcja tworzy bazę danych w formacie sqlite i wypełnia danymi pobranymi
+// wcześniej z plików yaml
 func (app *application) createSQLite(filename string) {
+	if fileExists(filename) {
+		os.Remove(filename)
+	}
 
-	fmt.Println("Create SQLite")
+	db, err := sql.Open("sqlite3", filename)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer db.Close()
+
+	sqlQuery := `
+		CREATE TABLE facts (id INTEGER NOT NULL PRIMARY KEY, 
+			                number TEXT,
+							day INTEGER, 
+							month INTEGER,
+							year INTEGER,
+							title TEXT,
+							content TEXT,
+							content_twitter TEXT,
+							location TEXT,
+							geo TEXT,
+							people TEXT,
+							keywords TEXT,
+							image TEXT,
+							image_info TEXT
+		);
+		CREATE TABLE sources (id INTEGER NOT NULL PRIMARY KEY, 
+			fact_id INTEGER, 
+			value TEXT,
+			url_name TEXT,
+			url TEXT
+		);
+	`
+
+	_, err = db.Exec(sqlQuery)
+	if err != nil {
+		log.Fatalf("%q: %s\n", err, sqlQuery)
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// tabela facts
+	sqlInsertFact := `
+		insert into facts 
+			(id, number, day, month, year, title, content, content_twitter, 
+				location, geo, people, keywords, image, image_info) 
+		values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`
+	stmtFact, err := tx.Prepare(sqlInsertFact)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer stmtFact.Close()
+
+	// tabela sources
+	sqlInsertSource := `
+		insert into sources 
+			(id, fact_id, value, url_name, url) 
+		values (?, ?, ?, ?, ?)
+	`
+	stmtSource, err := tx.Prepare(sqlInsertSource)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer stmtSource.Close()
+
+	for _, facts := range app.dataCache {
+		for _, fact := range facts {
+			result, err := stmtFact.Exec(nil, fact.ID, fact.Day, fact.Month, fact.Year,
+				fact.Title, fact.ContentText, fact.ContentTwitter, fact.Location,
+				fact.Geo, fact.People, fact.Keywords, fact.Image, fact.ImageInfo)
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			// id nowego rekordu w tabeli facts
+			insertedId, err := result.LastInsertId()
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			for _, source := range fact.Sources {
+				_, err := stmtSource.Exec(nil, insertedId, source.Value, source.URLName, source.URL)
+				if err != nil {
+					log.Fatal(err)
+				}
+			}
+		}
+	}
+
+	tx.Commit()
+
 }
