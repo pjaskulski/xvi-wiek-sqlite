@@ -107,7 +107,7 @@ func main() {
 	if err != nil {
 		app.errorLog.Fatal(err)
 	}
-	app.infoLog.Printf("Przetworzono %d wydarzeń", numberOfFacts)
+	app.infoLog.Printf("Wczytano z plików yaml %d wydarzeń", numberOfFacts)
 
 	// główna funkcja konwertująca dane pobrane z plików yaml i tworząca plik
 	// z bazą danych w formacje sqlite

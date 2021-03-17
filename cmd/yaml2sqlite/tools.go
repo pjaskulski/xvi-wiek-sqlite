@@ -205,4 +205,25 @@ func (app *application) createSQLite(filename string) {
 
 	tx.Commit()
 
+	rows, err := db.Query("select count(*) as fnum from facts")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer rows.Close()
+
+	var count int
+
+	row := db.QueryRow("SELECT COUNT(*) FROM facts")
+	err = row.Scan(&count)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	app.infoLog.Printf("Rekordów zapisanych w bazie: %d", count)
+
+	err = rows.Err()
+	if err != nil {
+		log.Fatal(err)
+	}
+
 }
