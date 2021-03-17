@@ -136,12 +136,14 @@ func (app *application) createSQLite(filename string) {
 							image TEXT,
 							image_info TEXT
 		);
+		CREATE INDEX idx_facts_date ON facts(year, month, day);
 		CREATE TABLE sources (id INTEGER NOT NULL PRIMARY KEY, 
 			fact_id INTEGER, 
 			value TEXT,
 			url_name TEXT,
 			url TEXT
 		);
+		CREATE INDEX idx_sources_fact_id ON sources(fact_id);
 	`
 
 	_, err = db.Exec(sqlQuery)
