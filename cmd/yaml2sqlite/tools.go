@@ -207,6 +207,7 @@ func (app *application) createSQLite(filename string) {
 
 	tx.Commit()
 
+	// weryfikacja liczby rekordów
 	rows, err := db.Query("select count(*) as fnum from facts")
 	if err != nil {
 		log.Fatal(err)
