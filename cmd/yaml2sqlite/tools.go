@@ -121,11 +121,16 @@ func (app *application) createSQLite(filename string) {
 	defer db.Close()
 
 	sqlQuery := `
-		CREATE TABLE facts (id INTEGER NOT NULL PRIMARY KEY, 
-			                number TEXT,
-							day INTEGER, 
-							month INTEGER,
-							year INTEGER,
+		PRAGMA foreign_keys = ON;
+		
+		DROP TABLE IF EXISTS sources;
+		DROP TABLE IF EXISTS facts;
+
+		CREATE TABLE facts (fact_id INTEGER NOT NULL PRIMARY KEY, 
+			                number TEXT NOT NULL,
+							day INTEGER NOT NULL, 
+							month INTEGER NOT NULL,
+							year INTEGER NOT NULL,
 							title TEXT,
 							content TEXT,
 							content_twitter TEXT,
@@ -136,13 +141,21 @@ func (app *application) createSQLite(filename string) {
 							image TEXT,
 							image_info TEXT
 		);
+
 		CREATE INDEX idx_facts_date ON facts(year, month, day);
-		CREATE TABLE sources (id INTEGER NOT NULL PRIMARY KEY, 
-			fact_id INTEGER, 
+
+
+		CREATE TABLE sources (source_id INTEGER NOT NULL PRIMARY KEY, 
+			fact_id INTEGER NOT NULL, 
 			value TEXT,
 			url_name TEXT,
-			url TEXT
+			url TEXT,
+			FOREIGN KEY (fact_id)
+       			REFERENCES facts (fact_id) 
+				ON UPDATE CASCADE
+				ON DELETE RESTRICT   
 		);
+
 		CREATE INDEX idx_sources_fact_id ON sources(fact_id);
 	`
 
@@ -159,7 +172,7 @@ func (app *application) createSQLite(filename string) {
 	// tabela facts
 	sqlInsertFact := `
 		insert into facts 
-			(id, number, day, month, year, title, content, content_twitter, 
+			(fact_id, number, day, month, year, title, content, content_twitter, 
 				location, geo, people, keywords, image, image_info) 
 		values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
@@ -172,7 +185,7 @@ func (app *application) createSQLite(filename string) {
 	// tabela sources
 	sqlInsertSource := `
 		insert into sources 
-			(id, fact_id, value, url_name, url) 
+			(source_id, fact_id, value, url_name, url) 
 		values (?, ?, ?, ?, ?)
 	`
 	stmtSource, err := tx.Prepare(sqlInsertSource)
