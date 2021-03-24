@@ -3,12 +3,12 @@ package main
 import (
 	"bytes"
 	"database/sql"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -62,15 +62,6 @@ func (app *application) readFact(filename string) {
 	app.dataCache[name] = result
 }
 
-// funkcja usuwa style (kapitaliki, italiki, pogrubienia) z danych pobranych w pliku yaml
-func prepareTextStyle(content string, clear bool) string {
-
-	content = strings.Replace(content, `{`, ``, -1)
-	content = strings.Replace(content, `}`, ``, -1)
-
-	return content
-}
-
 // loadData - wczytuje podczas startu serwera dane do struktur w pamięci operacyjnej
 func (app *application) loadData(path string) error {
 	// wydarzenia
@@ -97,7 +88,7 @@ func (app *application) createSQLite(filename string) {
 		os.Remove(filename)
 	}
 
-	db, err := sql.Open("sqlite3", filename)
+	db, err := sql.Open("sqlite3", fmt.Sprintf("file:%s?_foreign_keys=on", filename))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -105,7 +96,7 @@ func (app *application) createSQLite(filename string) {
 
 	sqlQuery := `
 		PRAGMA foreign_keys = ON;
-		
+	
 		DROP TABLE IF EXISTS sources;
 		DROP TABLE IF EXISTS facts;
 

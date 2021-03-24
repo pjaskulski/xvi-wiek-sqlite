@@ -23,3 +23,12 @@ func fileExists(filename string) bool {
 	_, err := os.Stat(filename)
 	return !os.IsNotExist(err)
 }
+
+// funkcja usuwa style (kapitaliki, italiki, pogrubienia) z danych pobranych w pliku yaml
+func prepareTextStyle(content string, clear bool) string {
+
+	content = strings.Replace(content, `{`, ``, -1)
+	content = strings.Replace(content, `}`, ``, -1)
+
+	return content
+}
