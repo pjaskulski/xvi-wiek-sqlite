@@ -1,1 +1,1 @@
-go build -o yaml2sqlite ./cmd/yaml2sqlite/
+go build -o yaml2sqlite ./cmd/app/
