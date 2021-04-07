@@ -118,6 +118,12 @@ func (app *application) createSQLite(filename string) {
 
 		CREATE INDEX idx_facts_date ON facts(year, month, day);
 
+		CREATE TABLE people (people_id INTEGER NOT NULL PRIMARY KEY,
+							 name TEXT
+		);
+
+		CREATE INDEX idx_people_name ON people(name);
+
 
 		CREATE TABLE sources (source_id INTEGER NOT NULL PRIMARY KEY, 
 			fact_id INTEGER NOT NULL, 
