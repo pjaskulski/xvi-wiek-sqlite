@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -81,6 +82,18 @@ func (app *application) loadData(path string) error {
 	return nil
 }
 
+// funkcja zlicza rekordy w tabelach
+func (app *application) countRec(database *sql.DB, tableName string) {
+	var count int
+
+	row := database.QueryRow(fmt.Sprintf("SELECT COUNT(*) FROM %s", tableName))
+	err := row.Scan(&count)
+	if err != nil {
+		log.Fatal(err)
+	}
+	app.infoLog.Printf("Rekordów zapisanych w tabeli '%s': %d", tableName, count)
+}
+
 // funkcja tworzy bazę danych w formacie sqlite i wypełnia danymi pobranymi
 // wcześniej z plików yaml
 func (app *application) createSQLite(filename string) {
@@ -99,6 +112,10 @@ func (app *application) createSQLite(filename string) {
 	
 		DROP TABLE IF EXISTS sources;
 		DROP TABLE IF EXISTS facts;
+		DROP TABLE IF EXISTS people;
+		DROP TABLE IF EXISTS fact_people;
+		DROP TABLE IF EXISTS keywords;
+		DROP TABLE IF EXISTS fact_keyword;
 
 		CREATE TABLE facts (fact_id INTEGER NOT NULL PRIMARY KEY, 
 			                number TEXT NOT NULL,
@@ -110,20 +127,49 @@ func (app *application) createSQLite(filename string) {
 							content_twitter TEXT,
 							location TEXT,
 							geo TEXT,
-							people TEXT,
-							keywords TEXT,
 							image TEXT,
 							image_info TEXT
 		);
-
 		CREATE INDEX idx_facts_date ON facts(year, month, day);
 
 		CREATE TABLE people (people_id INTEGER NOT NULL PRIMARY KEY,
 							 name TEXT
 		);
-
 		CREATE INDEX idx_people_name ON people(name);
 
+		CREATE TABLE fact_people (
+			fact_id INTEGER NOT NULL,
+		    people_id INTEGER NOT NULL,
+			FOREIGN KEY (fact_id) 
+				REFERENCES facts(fact_id)
+				ON UPDATE CASCADE
+				ON DELETE RESTRICT,
+			FOREIGN KEY (people_id) 
+				REFERENCES people(people_id)
+				ON UPDATE CASCADE
+				ON DELETE RESTRICT,
+			PRIMARY KEY(fact_id, people_id)
+		);
+		
+		CREATE TABLE keywords (
+			keyword_id INTEGER NOT NULL PRIMARY KEY,
+			word TEXT
+		);
+		CREATE INDEX idx_keywords_word ON keywords(word);
+		
+		CREATE TABLE fact_keywords (
+			fact_id INTEGER NOT NULL,
+			keyword_id INTEGER NOT NULL,
+			FOREIGN KEY (fact_id) 
+				REFERENCES facts(fact_id)
+				ON UPDATE CASCADE
+				ON DELETE RESTRICT,
+			FOREIGN KEY (keyword_id) 
+				REFERENCES keywords(keyword_id)
+				ON UPDATE CASCADE
+				ON DELETE RESTRICT,
+			PRIMARY KEY(fact_id, keyword_id)
+		);
 
 		CREATE TABLE sources (source_id INTEGER NOT NULL PRIMARY KEY, 
 			fact_id INTEGER NOT NULL, 
@@ -153,14 +199,62 @@ func (app *application) createSQLite(filename string) {
 	sqlInsertFact := `
 		insert into facts 
 			(fact_id, number, day, month, year, title, content, content_twitter, 
-				location, geo, people, keywords, image, image_info) 
-		values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				location, geo, image, image_info) 
+		values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 	stmtFact, err := tx.Prepare(sqlInsertFact)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer stmtFact.Close()
+
+	// tabela people
+	sqlInsertPeople := `
+		insert into people 
+			(people_id, name) 
+		values (?, ?)
+	`
+	stmtPeople, err := tx.Prepare(sqlInsertPeople)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer stmtPeople.Close()
+
+	// tabela keywords
+	sqlInsertKeyword := `
+		insert into keywords 
+			(keyword_id, word) 
+		values (?, ?)
+	`
+	stmtKeyword, err := tx.Prepare(sqlInsertKeyword)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer stmtKeyword.Close()
+
+	// tabela fact_people
+	sqlInsertFactPeople := `
+		insert into fact_people 
+			(fact_id, people_id) 
+		values (?, ?)
+	`
+	stmtFactPeople, err := tx.Prepare(sqlInsertFactPeople)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer stmtFactPeople.Close()
+
+	// tabela fact_keywords
+	sqlInsertFactKeyword := `
+		insert into fact_keywords 
+			(fact_id, keyword_id) 
+		values (?, ?)
+	`
+	stmtFactKeyword, err := tx.Prepare(sqlInsertFactKeyword)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer stmtFactKeyword.Close()
 
 	// tabela sources
 	sqlInsertSource := `
@@ -178,7 +272,7 @@ func (app *application) createSQLite(filename string) {
 		for _, fact := range facts {
 			result, err := stmtFact.Exec(nil, fact.ID, fact.Day, fact.Month, fact.Year,
 				fact.Title, fact.ContentText, fact.ContentTwitter, fact.Location,
-				fact.Geo, fact.People, fact.Keywords, fact.Image, fact.ImageInfo)
+				fact.Geo, fact.Image, fact.ImageInfo)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -187,6 +281,52 @@ func (app *application) createSQLite(filename string) {
 			insertedId, err := result.LastInsertId()
 			if err != nil {
 				log.Fatal(err)
+			}
+
+			// fact.People,
+			if fact.People != "" {
+				persons := strings.Split(fact.People, ";")
+				for _, person := range persons {
+					person = strings.TrimSpace(person)
+
+					// weryfikacja czy już nie istnieje w bazie
+
+					resultPeople, err := stmtPeople.Exec(nil, person)
+					if err != nil {
+						log.Fatal(err)
+					}
+					peopleInsertedId, err := resultPeople.LastInsertId()
+					if err != nil {
+						log.Fatal(err)
+					}
+					_, err = stmtFactPeople.Exec(insertedId, peopleInsertedId)
+					if err != nil {
+						log.Fatal(err)
+					}
+				}
+			}
+
+			// fact.Keywords
+			if fact.Keywords != "" {
+				keywords := strings.Split(fact.Keywords, ";")
+				for _, keyword := range keywords {
+					keyword = strings.TrimSpace(keyword)
+
+					// weryfikacja czy już nie istnieje w bazie
+
+					resultKeyword, err := stmtKeyword.Exec(nil, keyword)
+					if err != nil {
+						log.Fatal(err)
+					}
+					keywordInsertedId, err := resultKeyword.LastInsertId()
+					if err != nil {
+						log.Fatal(err)
+					}
+					_, err = stmtFactKeyword.Exec(insertedId, keywordInsertedId)
+					if err != nil {
+						log.Fatal(err)
+					}
+				}
 			}
 
 			for _, source := range fact.Sources {
@@ -201,13 +341,10 @@ func (app *application) createSQLite(filename string) {
 	tx.Commit()
 
 	// weryfikacja liczby rekordów
-	var count int
-
-	row := db.QueryRow("SELECT COUNT(*) FROM facts")
-	err = row.Scan(&count)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	app.infoLog.Printf("Rekordów zapisanych w bazie: %d", count)
+	app.countRec(db, "facts")
+	app.countRec(db, "sources")
+	app.countRec(db, "people")
+	app.countRec(db, "keywords")
+	app.countRec(db, "fact_people")
+	app.countRec(db, "fact_keywords")
 }
