@@ -83,10 +83,10 @@ func (app *application) loadData(path string) error {
 }
 
 // funkcja zlicza rekordy w tabelach
-func (app *application) countRec(database *sql.DB, tableName string) {
+func (app *application) countRec(tableName string) {
 	var count int
 
-	row := database.QueryRow(fmt.Sprintf("SELECT COUNT(*) FROM %s", tableName))
+	row := app.db.QueryRow(fmt.Sprintf("SELECT COUNT(*) FROM %s", tableName))
 	err := row.Scan(&count)
 	if err != nil {
 		log.Fatal(err)
@@ -96,10 +96,10 @@ func (app *application) countRec(database *sql.DB, tableName string) {
 
 // wyszukuje rekord w podanej tabeli ze słowem kluczowym, nazwą o podanej
 // wartości, zwraca id rekordu lub 0
-func (app *application) findRec(tx *sql.Tx, nameOfIDField, table, name string) int64 {
+func (app *application) findRec(nameOfIDField, table, name string) int64 {
 
 	query := fmt.Sprintf("SELECT %s FROM %s WHERE name = '%s'", nameOfIDField, table, name)
-	row, err := tx.Query(query)
+	row, err := app.tx.Query(query)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -115,10 +115,10 @@ func (app *application) findRec(tx *sql.Tx, nameOfIDField, table, name string) i
 }
 
 // dodawanie nowego rekordu do tabeli people
-func (app *application) addPerson(tx *sql.Tx, person string) int64 {
+func (app *application) addPerson(person string) int64 {
 	var id int64
 
-	stmtPeople, err := tx.Prepare(sqlInsertPeople)
+	stmtPeople, err := app.tx.Prepare(sqlInsertPeople)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -138,10 +138,10 @@ func (app *application) addPerson(tx *sql.Tx, person string) int64 {
 }
 
 // dodawanie nowego rekordu do tabeli keywords
-func (app *application) addKeyword(tx *sql.Tx, keyword string) int64 {
+func (app *application) addKeyword(keyword string) int64 {
 	var id int64
 
-	stmtKeyword, err := tx.Prepare(sqlInsertKeyword)
+	stmtKeyword, err := app.tx.Prepare(sqlInsertKeyword)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -161,9 +161,9 @@ func (app *application) addKeyword(tx *sql.Tx, keyword string) int64 {
 }
 
 // dodawanie nowego rekordu do tabeli sources
-func (app *application) addSource(tx *sql.Tx, fact_id int64, value, url_name, url string) {
+func (app *application) addSource(fact_id int64, value, url_name, url string) {
 
-	stmtSource, err := tx.Prepare(sqlInsertSource)
+	stmtSource, err := app.tx.Prepare(sqlInsertSource)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -176,10 +176,10 @@ func (app *application) addSource(tx *sql.Tx, fact_id int64, value, url_name, ur
 }
 
 // dodawanie nowego rekordu do tabeli facts
-func (app *application) addFact(tx *sql.Tx, number string, day, month, year int, title, content, contentTwitter, location, geo, image, imageInfo string) int64 {
+func (app *application) addFact(number string, day, month, year int, title, content, contentTwitter, location, geo, image, imageInfo string) int64 {
 	var insertedId int64
 
-	stmtFact, err := tx.Prepare(sqlInsertFact)
+	stmtFact, err := app.tx.Prepare(sqlInsertFact)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -200,9 +200,9 @@ func (app *application) addFact(tx *sql.Tx, number string, day, month, year int,
 }
 
 // funkcja przypisuje postać do wydarzenia historycznego
-func (app *application) addFactPeople(tx *sql.Tx, factId, peopleId int64) {
+func (app *application) addFactPeople(factId, peopleId int64) {
 
-	stmtFactPeople, err := tx.Prepare(sqlInsertFactPeople)
+	stmtFactPeople, err := app.tx.Prepare(sqlInsertFactPeople)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -216,9 +216,9 @@ func (app *application) addFactPeople(tx *sql.Tx, factId, peopleId int64) {
 }
 
 // funkcja przypisuje słowo kluczowe do wydarzenia historycznego
-func (app *application) addFactKeyword(tx *sql.Tx, factId, keywordId int64) {
+func (app *application) addFactKeyword(factId, keywordId int64) {
 
-	stmtFactKeyword, err := tx.Prepare(sqlInsertFactKeyword)
+	stmtFactKeyword, err := app.tx.Prepare(sqlInsertFactKeyword)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -230,25 +230,37 @@ func (app *application) addFactKeyword(tx *sql.Tx, factId, keywordId int64) {
 	}
 }
 
+// raport z liczbą dodanych rekordów
+func (app *application) countReport() {
+	app.countRec("facts")
+	app.countRec("sources")
+	app.countRec("people")
+	app.countRec("keywords")
+	app.countRec("fact_people")
+	app.countRec("fact_keywords")
+}
+
 // funkcja tworzy bazę danych w formacie sqlite i wypełnia danymi pobranymi
 // wcześniej z plików yaml
 func (app *application) createSQLite(filename string) {
+	var err error
+
 	if fileExists(filename) {
 		os.Remove(filename)
 	}
 
-	db, err := sql.Open("sqlite3", fmt.Sprintf("file:%s?_foreign_keys=on", filename))
+	app.db, err = sql.Open("sqlite3", fmt.Sprintf("file:%s?_foreign_keys=on", filename))
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer db.Close()
+	defer app.db.Close()
 
-	_, err = db.Exec(sqlCreateDb)
+	_, err = app.db.Exec(sqlCreateDb)
 	if err != nil {
 		log.Fatalf("%q: %s\n", err, sqlCreateDb)
 	}
 
-	tx, err := db.Begin()
+	app.tx, err = app.db.Begin()
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -257,7 +269,7 @@ func (app *application) createSQLite(filename string) {
 		for _, fact := range facts {
 
 			// dołączenie nowego wydarzenia zwraca id nowego rekordu w tabeli facts
-			insertedId := app.addFact(tx, fact.ID, fact.Day, fact.Month, fact.Year,
+			insertedId := app.addFact(fact.ID, fact.Day, fact.Month, fact.Year,
 				fact.Title, fact.ContentText, fact.ContentTwitter, fact.Location,
 				fact.Geo, fact.Image, fact.ImageInfo)
 
@@ -274,15 +286,15 @@ func (app *application) createSQLite(filename string) {
 					}
 
 					// weryfikacja czy już nie istnieje w bazie
-					peopleInsertedId := app.findRec(tx, "people_id", "people", person)
+					peopleInsertedId := app.findRec("people_id", "people", person)
 
 					// jeżeli nie to dodaje nowy rekord do słownika people
 					if peopleInsertedId == 0 {
-						peopleInsertedId = app.addPerson(tx, person)
+						peopleInsertedId = app.addPerson(person)
 					}
 
 					// podpięcie postaci do wydarzenia historycznego
-					app.addFactPeople(tx, insertedId, peopleInsertedId)
+					app.addFactPeople(insertedId, peopleInsertedId)
 				}
 			}
 
@@ -299,32 +311,27 @@ func (app *application) createSQLite(filename string) {
 					}
 
 					// weryfikacja czy już nie istnieje w bazie
-					keywordInsertedId = app.findRec(tx, "keyword_id", "keywords", keyword)
+					keywordInsertedId = app.findRec("keyword_id", "keywords", keyword)
 
 					// jeżeli nie to dodaje nowy rekord do słownika keywords
 					if keywordInsertedId == 0 {
-						keywordInsertedId = app.addKeyword(tx, keyword)
+						keywordInsertedId = app.addKeyword(keyword)
 					}
 
 					// podpięcie słowa kluczowego do wydarzenia historycznego
-					app.addFactKeyword(tx, insertedId, keywordInsertedId)
+					app.addFactKeyword(insertedId, keywordInsertedId)
 				}
 			}
 
 			// uzupełnienie bazy źródeł dla wydarzenia historycznego
 			for _, source := range fact.Sources {
-				app.addSource(tx, insertedId, source.Value, source.URLName, source.URL)
+				app.addSource(insertedId, source.Value, source.URLName, source.URL)
 			}
 		}
 	}
 
-	tx.Commit()
+	app.tx.Commit()
 
 	// liczba dodanych rekordów dla poszczególnych tabel
-	app.countRec(db, "facts")
-	app.countRec(db, "sources")
-	app.countRec(db, "people")
-	app.countRec(db, "keywords")
-	app.countRec(db, "fact_people")
-	app.countRec(db, "fact_keywords")
+	app.countReport()
 }

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"flag"
 	"log"
 	"os"
@@ -40,6 +41,8 @@ type application struct {
 	errorLog  *log.Logger
 	infoLog   *log.Logger
 	dataCache map[string][]Fact
+	db        *sql.DB
+	tx        *sql.Tx
 }
 
 var (
