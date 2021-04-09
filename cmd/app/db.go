@@ -94,6 +94,175 @@ func (app *application) countRec(database *sql.DB, tableName string) {
 	app.infoLog.Printf("Rekordów zapisanych w tabeli '%s': %d", tableName, count)
 }
 
+// wyszukuje rekord w podanej tabeli ze słowem kluczowym, nazwą o podanej
+// wartości, zwraca id rekordu lub 0
+func (app *application) findRec(tx *sql.Tx, nameOfIDField, table, name string) int64 {
+
+	query := fmt.Sprintf("SELECT %s FROM %s WHERE name = '%s'", nameOfIDField, table, name)
+	row, err := tx.Query(query)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer row.Close()
+
+	for row.Next() { // oczekiwany tylko jeden rekord
+		var id int64
+		row.Scan(&id)
+		return id
+	}
+
+	return 0
+}
+
+// dodawanie nowego rekordu do tabeli people
+func (app *application) addPerson(tx *sql.Tx, person string) int64 {
+	var id int64
+	sqlInsertPeople := `
+		INSERT INTO people 
+			(people_id, name) 
+		VALUES (?, ?);
+	`
+
+	stmtPeople, err := tx.Prepare(sqlInsertPeople)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer stmtPeople.Close()
+
+	result, err := stmtPeople.Exec(nil, person)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	id, err = result.LastInsertId()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return id
+}
+
+// dodawanie nowego rekordu do tabeli keywords
+func (app *application) addKeyword(tx *sql.Tx, keyword string) int64 {
+	var id int64
+
+	sqlInsertKeyword := `
+		INSERT INTO keywords 
+			(keyword_id, name) 
+		VALUES (?, ?);
+	`
+
+	stmtKeyword, err := tx.Prepare(sqlInsertKeyword)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer stmtKeyword.Close()
+
+	result, err := stmtKeyword.Exec(nil, keyword)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	id, err = result.LastInsertId()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return id
+}
+
+// dodawanie nowego rekordu do tabeli sources
+func (app *application) addSource(tx *sql.Tx, fact_id int64, value, url_name, url string) {
+
+	sqlInsertSource := `
+		INSERT INTO SOURCES 
+			(source_id, fact_id, value, url_name, url) 
+		VALUES (?, ?, ?, ?, ?);
+	`
+
+	stmtSource, err := tx.Prepare(sqlInsertSource)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer stmtSource.Close()
+
+	_, err = stmtSource.Exec(nil, fact_id, value, url_name, url)
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
+// dodawanie nowego rekordu do tabeli facts
+func (app *application) addFact(tx *sql.Tx, number string, day, month, year int, title, content, contentTwitter, location, geo, image, imageInfo string) int64 {
+	var insertedId int64
+
+	sqlInsertFact := `
+		INSERT INTO facts 
+			(fact_id, number, day, month, year, title, content, content_twitter, 
+				location, geo, image, image_info) 
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+	`
+	stmtFact, err := tx.Prepare(sqlInsertFact)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer stmtFact.Close()
+
+	result, err := stmtFact.Exec(nil, number, day, month, year, title, content,
+		contentTwitter, location, geo, image, imageInfo)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	insertedId, err = result.LastInsertId()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return insertedId
+}
+
+// funkcja przypisuje postać do wydarzenia historycznego
+func (app *application) addFactPeople(tx *sql.Tx, factId, peopleId int64) {
+
+	sqlInsertFactPeople := `
+		INSERT INTO fact_people 
+			(fact_id, people_id) 
+		VALUES (?, ?);
+	`
+	stmtFactPeople, err := tx.Prepare(sqlInsertFactPeople)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer stmtFactPeople.Close()
+
+	_, err = stmtFactPeople.Exec(factId, peopleId)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+}
+
+// funkcja przypisuje słowo kluczowe do wydarzenia historycznego
+func (app *application) addFactKeyword(tx *sql.Tx, factId, keywordId int64) {
+
+	sqlInsertFactKeyword := `
+		INSERT INTO fact_keywords 
+			(fact_id, keyword_id) 
+		VALUES (?, ?);
+	`
+	stmtFactKeyword, err := tx.Prepare(sqlInsertFactKeyword)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer stmtFactKeyword.Close()
+
+	_, err = stmtFactKeyword.Exec(factId, keywordId)
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
 // funkcja tworzy bazę danych w formacie sqlite i wypełnia danymi pobranymi
 // wcześniej z plików yaml
 func (app *application) createSQLite(filename string) {
@@ -107,7 +276,7 @@ func (app *application) createSQLite(filename string) {
 	}
 	defer db.Close()
 
-	sqlQuery := `
+	sqlCreateDb := `
 		PRAGMA foreign_keys = ON;
 	
 		DROP TABLE IF EXISTS sources;
@@ -117,7 +286,7 @@ func (app *application) createSQLite(filename string) {
 		DROP TABLE IF EXISTS keywords;
 		DROP TABLE IF EXISTS fact_keyword;
 
-		CREATE TABLE facts (fact_id INTEGER NOT NULL PRIMARY KEY, 
+		CREATE TABLE facts (fact_id INTEGER PRIMARY KEY, 
 			                number TEXT NOT NULL,
 							day INTEGER NOT NULL, 
 							month INTEGER NOT NULL,
@@ -132,8 +301,8 @@ func (app *application) createSQLite(filename string) {
 		);
 		CREATE INDEX idx_facts_date ON facts(year, month, day);
 
-		CREATE TABLE people (people_id INTEGER NOT NULL PRIMARY KEY,
-							 name TEXT
+		CREATE TABLE people (people_id INTEGER PRIMARY KEY,
+							 name TEXT NOT NULL UNIQUE
 		);
 		CREATE INDEX idx_people_name ON people(name);
 
@@ -152,10 +321,10 @@ func (app *application) createSQLite(filename string) {
 		);
 		
 		CREATE TABLE keywords (
-			keyword_id INTEGER NOT NULL PRIMARY KEY,
-			word TEXT
+			keyword_id INTEGER PRIMARY KEY,
+			name TEXT NOT NULL UNIQUE
 		);
-		CREATE INDEX idx_keywords_word ON keywords(word);
+		CREATE INDEX idx_keywords_name ON keywords(name);
 		
 		CREATE TABLE fact_keywords (
 			fact_id INTEGER NOT NULL,
@@ -171,7 +340,8 @@ func (app *application) createSQLite(filename string) {
 			PRIMARY KEY(fact_id, keyword_id)
 		);
 
-		CREATE TABLE sources (source_id INTEGER NOT NULL PRIMARY KEY, 
+		CREATE TABLE sources (
+			source_id INTEGER PRIMARY KEY, 
 			fact_id INTEGER NOT NULL, 
 			value TEXT,
 			url_name TEXT,
@@ -185,9 +355,9 @@ func (app *application) createSQLite(filename string) {
 		CREATE INDEX idx_sources_fact_id ON sources(fact_id);
 	`
 
-	_, err = db.Exec(sqlQuery)
+	_, err = db.Exec(sqlCreateDb)
 	if err != nil {
-		log.Fatalf("%q: %s\n", err, sqlQuery)
+		log.Fatalf("%q: %s\n", err, sqlCreateDb)
 	}
 
 	tx, err := db.Begin()
@@ -195,152 +365,74 @@ func (app *application) createSQLite(filename string) {
 		log.Fatal(err)
 	}
 
-	// tabela facts
-	sqlInsertFact := `
-		insert into facts 
-			(fact_id, number, day, month, year, title, content, content_twitter, 
-				location, geo, image, image_info) 
-		values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`
-	stmtFact, err := tx.Prepare(sqlInsertFact)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer stmtFact.Close()
-
-	// tabela people
-	sqlInsertPeople := `
-		insert into people 
-			(people_id, name) 
-		values (?, ?)
-	`
-	stmtPeople, err := tx.Prepare(sqlInsertPeople)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer stmtPeople.Close()
-
-	// tabela keywords
-	sqlInsertKeyword := `
-		insert into keywords 
-			(keyword_id, word) 
-		values (?, ?)
-	`
-	stmtKeyword, err := tx.Prepare(sqlInsertKeyword)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer stmtKeyword.Close()
-
-	// tabela fact_people
-	sqlInsertFactPeople := `
-		insert into fact_people 
-			(fact_id, people_id) 
-		values (?, ?)
-	`
-	stmtFactPeople, err := tx.Prepare(sqlInsertFactPeople)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer stmtFactPeople.Close()
-
-	// tabela fact_keywords
-	sqlInsertFactKeyword := `
-		insert into fact_keywords 
-			(fact_id, keyword_id) 
-		values (?, ?)
-	`
-	stmtFactKeyword, err := tx.Prepare(sqlInsertFactKeyword)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer stmtFactKeyword.Close()
-
-	// tabela sources
-	sqlInsertSource := `
-		insert into sources 
-			(source_id, fact_id, value, url_name, url) 
-		values (?, ?, ?, ?, ?)
-	`
-	stmtSource, err := tx.Prepare(sqlInsertSource)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer stmtSource.Close()
-
 	for _, facts := range app.dataCache {
 		for _, fact := range facts {
-			result, err := stmtFact.Exec(nil, fact.ID, fact.Day, fact.Month, fact.Year,
+
+			// dołączenie nowego wydarzenia zwraca id nowego rekordu w tabeli facts
+			insertedId := app.addFact(tx, fact.ID, fact.Day, fact.Month, fact.Year,
 				fact.Title, fact.ContentText, fact.ContentTwitter, fact.Location,
 				fact.Geo, fact.Image, fact.ImageInfo)
-			if err != nil {
-				log.Fatal(err)
-			}
-
-			// id nowego rekordu w tabeli facts
-			insertedId, err := result.LastInsertId()
-			if err != nil {
-				log.Fatal(err)
-			}
 
 			// fact.People,
 			if fact.People != "" {
+
 				persons := strings.Split(fact.People, ";")
 				for _, person := range persons {
 					person = strings.TrimSpace(person)
 
-					// weryfikacja czy już nie istnieje w bazie
+					// pomijanie pustych wpisów
+					if person == "" {
+						continue
+					}
 
-					resultPeople, err := stmtPeople.Exec(nil, person)
-					if err != nil {
-						log.Fatal(err)
+					// weryfikacja czy już nie istnieje w bazie
+					peopleInsertedId := app.findRec(tx, "people_id", "people", person)
+
+					// jeżeli nie to dodaje nowy rekord do słownika people
+					if peopleInsertedId == 0 {
+						peopleInsertedId = app.addPerson(tx, person)
 					}
-					peopleInsertedId, err := resultPeople.LastInsertId()
-					if err != nil {
-						log.Fatal(err)
-					}
-					_, err = stmtFactPeople.Exec(insertedId, peopleInsertedId)
-					if err != nil {
-						log.Fatal(err)
-					}
+
+					// podpięcie postaci do wydarzenia historycznego
+					app.addFactPeople(tx, insertedId, peopleInsertedId)
 				}
 			}
 
 			// fact.Keywords
 			if fact.Keywords != "" {
+				var keywordInsertedId int64
+
 				keywords := strings.Split(fact.Keywords, ";")
 				for _, keyword := range keywords {
 					keyword = strings.TrimSpace(keyword)
+					// pomijanie pustych wpisów
+					if keyword == "" {
+						continue
+					}
 
 					// weryfikacja czy już nie istnieje w bazie
+					keywordInsertedId = app.findRec(tx, "keyword_id", "keywords", keyword)
 
-					resultKeyword, err := stmtKeyword.Exec(nil, keyword)
-					if err != nil {
-						log.Fatal(err)
+					// jeżeli nie to dodaje nowy rekord do słownika keywords
+					if keywordInsertedId == 0 {
+						keywordInsertedId = app.addKeyword(tx, keyword)
 					}
-					keywordInsertedId, err := resultKeyword.LastInsertId()
-					if err != nil {
-						log.Fatal(err)
-					}
-					_, err = stmtFactKeyword.Exec(insertedId, keywordInsertedId)
-					if err != nil {
-						log.Fatal(err)
-					}
+
+					// podpięcie słowa kluczowego do wydarzenia historycznego
+					app.addFactKeyword(tx, insertedId, keywordInsertedId)
 				}
 			}
 
+			// uzupełnienie bazy źródeł dla wydarzenia historycznego
 			for _, source := range fact.Sources {
-				_, err := stmtSource.Exec(nil, insertedId, source.Value, source.URLName, source.URL)
-				if err != nil {
-					log.Fatal(err)
-				}
+				app.addSource(tx, insertedId, source.Value, source.URLName, source.URL)
 			}
 		}
 	}
 
 	tx.Commit()
 
-	// weryfikacja liczby rekordów
+	// liczba dodanych rekordów dla poszczególnych tabel
 	app.countRec(db, "facts")
 	app.countRec(db, "sources")
 	app.countRec(db, "people")
