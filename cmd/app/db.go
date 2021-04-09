@@ -117,11 +117,6 @@ func (app *application) findRec(tx *sql.Tx, nameOfIDField, table, name string) i
 // dodawanie nowego rekordu do tabeli people
 func (app *application) addPerson(tx *sql.Tx, person string) int64 {
 	var id int64
-	sqlInsertPeople := `
-		INSERT INTO people 
-			(people_id, name) 
-		VALUES (?, ?);
-	`
 
 	stmtPeople, err := tx.Prepare(sqlInsertPeople)
 	if err != nil {
@@ -146,12 +141,6 @@ func (app *application) addPerson(tx *sql.Tx, person string) int64 {
 func (app *application) addKeyword(tx *sql.Tx, keyword string) int64 {
 	var id int64
 
-	sqlInsertKeyword := `
-		INSERT INTO keywords 
-			(keyword_id, name) 
-		VALUES (?, ?);
-	`
-
 	stmtKeyword, err := tx.Prepare(sqlInsertKeyword)
 	if err != nil {
 		log.Fatal(err)
@@ -174,12 +163,6 @@ func (app *application) addKeyword(tx *sql.Tx, keyword string) int64 {
 // dodawanie nowego rekordu do tabeli sources
 func (app *application) addSource(tx *sql.Tx, fact_id int64, value, url_name, url string) {
 
-	sqlInsertSource := `
-		INSERT INTO SOURCES 
-			(source_id, fact_id, value, url_name, url) 
-		VALUES (?, ?, ?, ?, ?);
-	`
-
 	stmtSource, err := tx.Prepare(sqlInsertSource)
 	if err != nil {
 		log.Fatal(err)
@@ -196,12 +179,6 @@ func (app *application) addSource(tx *sql.Tx, fact_id int64, value, url_name, ur
 func (app *application) addFact(tx *sql.Tx, number string, day, month, year int, title, content, contentTwitter, location, geo, image, imageInfo string) int64 {
 	var insertedId int64
 
-	sqlInsertFact := `
-		INSERT INTO facts 
-			(fact_id, number, day, month, year, title, content, content_twitter, 
-				location, geo, image, image_info) 
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
-	`
 	stmtFact, err := tx.Prepare(sqlInsertFact)
 	if err != nil {
 		log.Fatal(err)
@@ -225,11 +202,6 @@ func (app *application) addFact(tx *sql.Tx, number string, day, month, year int,
 // funkcja przypisuje postać do wydarzenia historycznego
 func (app *application) addFactPeople(tx *sql.Tx, factId, peopleId int64) {
 
-	sqlInsertFactPeople := `
-		INSERT INTO fact_people 
-			(fact_id, people_id) 
-		VALUES (?, ?);
-	`
 	stmtFactPeople, err := tx.Prepare(sqlInsertFactPeople)
 	if err != nil {
 		log.Fatal(err)
@@ -246,11 +218,6 @@ func (app *application) addFactPeople(tx *sql.Tx, factId, peopleId int64) {
 // funkcja przypisuje słowo kluczowe do wydarzenia historycznego
 func (app *application) addFactKeyword(tx *sql.Tx, factId, keywordId int64) {
 
-	sqlInsertFactKeyword := `
-		INSERT INTO fact_keywords 
-			(fact_id, keyword_id) 
-		VALUES (?, ?);
-	`
 	stmtFactKeyword, err := tx.Prepare(sqlInsertFactKeyword)
 	if err != nil {
 		log.Fatal(err)
@@ -275,85 +242,6 @@ func (app *application) createSQLite(filename string) {
 		log.Fatal(err)
 	}
 	defer db.Close()
-
-	sqlCreateDb := `
-		PRAGMA foreign_keys = ON;
-	
-		DROP TABLE IF EXISTS sources;
-		DROP TABLE IF EXISTS facts;
-		DROP TABLE IF EXISTS people;
-		DROP TABLE IF EXISTS fact_people;
-		DROP TABLE IF EXISTS keywords;
-		DROP TABLE IF EXISTS fact_keyword;
-
-		CREATE TABLE facts (fact_id INTEGER PRIMARY KEY, 
-			                number TEXT NOT NULL,
-							day INTEGER NOT NULL, 
-							month INTEGER NOT NULL,
-							year INTEGER NOT NULL,
-							title TEXT,
-							content TEXT,
-							content_twitter TEXT,
-							location TEXT,
-							geo TEXT,
-							image TEXT,
-							image_info TEXT
-		);
-		CREATE INDEX idx_facts_date ON facts(year, month, day);
-
-		CREATE TABLE people (people_id INTEGER PRIMARY KEY,
-							 name TEXT NOT NULL UNIQUE
-		);
-		CREATE INDEX idx_people_name ON people(name);
-
-		CREATE TABLE fact_people (
-			fact_id INTEGER NOT NULL,
-		    people_id INTEGER NOT NULL,
-			FOREIGN KEY (fact_id) 
-				REFERENCES facts(fact_id)
-				ON UPDATE CASCADE
-				ON DELETE RESTRICT,
-			FOREIGN KEY (people_id) 
-				REFERENCES people(people_id)
-				ON UPDATE CASCADE
-				ON DELETE RESTRICT,
-			PRIMARY KEY(fact_id, people_id)
-		);
-		
-		CREATE TABLE keywords (
-			keyword_id INTEGER PRIMARY KEY,
-			name TEXT NOT NULL UNIQUE
-		);
-		CREATE INDEX idx_keywords_name ON keywords(name);
-		
-		CREATE TABLE fact_keywords (
-			fact_id INTEGER NOT NULL,
-			keyword_id INTEGER NOT NULL,
-			FOREIGN KEY (fact_id) 
-				REFERENCES facts(fact_id)
-				ON UPDATE CASCADE
-				ON DELETE RESTRICT,
-			FOREIGN KEY (keyword_id) 
-				REFERENCES keywords(keyword_id)
-				ON UPDATE CASCADE
-				ON DELETE RESTRICT,
-			PRIMARY KEY(fact_id, keyword_id)
-		);
-
-		CREATE TABLE sources (
-			source_id INTEGER PRIMARY KEY, 
-			fact_id INTEGER NOT NULL, 
-			value TEXT,
-			url_name TEXT,
-			url TEXT,
-			FOREIGN KEY (fact_id)
-       			REFERENCES facts (fact_id) 
-				ON UPDATE CASCADE
-				ON DELETE RESTRICT   
-		);
-
-		CREATE INDEX idx_sources_fact_id ON sources(fact_id);
-	`
 
 	_, err = db.Exec(sqlCreateDb)
 	if err != nil {
