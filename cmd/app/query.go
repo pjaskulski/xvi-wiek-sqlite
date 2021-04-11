@@ -12,14 +12,14 @@ var sqlCreateDb string = `
 
         CREATE TABLE facts (fact_id INTEGER PRIMARY KEY, 
                             number TEXT NOT NULL,
+                            date TEXT,
                             day INTEGER NOT NULL, 
                             month INTEGER NOT NULL,
                             year INTEGER NOT NULL,
                             title TEXT,
                             content TEXT,
                             content_twitter TEXT,
-                            location TEXT,
-                            geo TEXT,
+                            location_id INT,
                             image TEXT,
                             image_info TEXT
         );
@@ -64,6 +64,13 @@ var sqlCreateDb string = `
             PRIMARY KEY(fact_id, keyword_id)
         );
 
+		CREATE TABLE locations (
+			location_id INTEGER PRIMARY KEY,
+			name TEXT,
+			geo TEXT
+		);
+		CREATE INDEX idx_locations_name ON locations(name);
+
         CREATE TABLE sources (
             source_id INTEGER PRIMARY KEY, 
             fact_id INTEGER NOT NULL, 
@@ -91,9 +98,9 @@ var sqlInsertKeyword string = `
     `
 var sqlInsertFact string = `
     INSERT INTO facts 
-        (fact_id, number, day, month, year, title, content, content_twitter, 
-            location, geo, image, image_info) 
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+        (fact_id, number, date, day, month, year, title, content, content_twitter, 
+            image, image_info) 
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 `
 var sqlInsertSource string = `
     INSERT INTO SOURCES 
@@ -109,4 +116,14 @@ var sqlInsertFactKeyword string = `
     INSERT INTO fact_keywords 
         (fact_id, keyword_id) 
     VALUES (?, ?);
+`
+var sqlInsertLocation string = `
+    INSERT INTO locations 
+        (location_id, name, geo) 
+    VALUES (?, ?, ?);
+`
+var sqlUpdateFact string = `
+    UPDATE facts 
+	SET location_id = ? 
+    WHERE fact_id = ?;
 `

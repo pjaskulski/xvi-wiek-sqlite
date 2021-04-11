@@ -137,6 +137,29 @@ func (app *application) addPerson(person string) int64 {
 	return id
 }
 
+// dodawanie nowego rekordu do tabeli locations
+func (app *application) addLocation(location, geo string) int64 {
+	var id int64
+
+	stmtLocation, err := app.tx.Prepare(sqlInsertLocation)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer stmtLocation.Close()
+
+	result, err := stmtLocation.Exec(nil, location, geo)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	id, err = result.LastInsertId()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return id
+}
+
 // dodawanie nowego rekordu do tabeli keywords
 func (app *application) addKeyword(keyword string) int64 {
 	var id int64
@@ -176,7 +199,7 @@ func (app *application) addSource(fact_id int64, value, url_name, url string) {
 }
 
 // dodawanie nowego rekordu do tabeli facts
-func (app *application) addFact(number string, day, month, year int, title, content, contentTwitter, location, geo, image, imageInfo string) int64 {
+func (app *application) addFact(number string, day, month, year int, title, content, contentTwitter, image, imageInfo string) int64 {
 	var insertedId int64
 
 	stmtFact, err := app.tx.Prepare(sqlInsertFact)
@@ -185,8 +208,10 @@ func (app *application) addFact(number string, day, month, year int, title, cont
 	}
 	defer stmtFact.Close()
 
-	result, err := stmtFact.Exec(nil, number, day, month, year, title, content,
-		contentTwitter, location, geo, image, imageInfo)
+	factDate := fmt.Sprintf("%04d-%02d-%02d", year, month, day)
+
+	result, err := stmtFact.Exec(nil, number, factDate, day, month, year, title, content,
+		contentTwitter, image, imageInfo)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -197,6 +222,21 @@ func (app *application) addFact(number string, day, month, year int, title, cont
 	}
 
 	return insertedId
+}
+
+// uzupełnienie rekordu tabeli facts o lokalizację i pozycję geograficzną
+func (app *application) updateFact(fact_id, location_id int64) {
+
+	stmtUpdateFact, err := app.tx.Prepare(sqlUpdateFact)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer stmtUpdateFact.Close()
+
+	_, err = stmtUpdateFact.Exec(location_id, fact_id)
+	if err != nil {
+		log.Fatal(err)
+	}
 }
 
 // funkcja przypisuje postać do wydarzenia historycznego
@@ -236,6 +276,7 @@ func (app *application) countReport() {
 	app.countRec("sources")
 	app.countRec("people")
 	app.countRec("keywords")
+	app.countRec("locations")
 	app.countRec("fact_people")
 	app.countRec("fact_keywords")
 }
@@ -270,8 +311,7 @@ func (app *application) createSQLite(filename string) {
 
 			// dołączenie nowego wydarzenia zwraca id nowego rekordu w tabeli facts
 			insertedId := app.addFact(fact.ID, fact.Day, fact.Month, fact.Year,
-				fact.Title, fact.ContentText, fact.ContentTwitter, fact.Location,
-				fact.Geo, fact.Image, fact.ImageInfo)
+				fact.Title, fact.ContentText, fact.ContentTwitter, fact.Image, fact.ImageInfo)
 
 			// fact.People,
 			if fact.People != "" {
@@ -321,6 +361,22 @@ func (app *application) createSQLite(filename string) {
 					// podpięcie słowa kluczowego do wydarzenia historycznego
 					app.addFactKeyword(insertedId, keywordInsertedId)
 				}
+			}
+
+			// fact.Location,
+			location := strings.TrimSpace(fact.Location)
+			geo := strings.TrimSpace(fact.Geo)
+			if location != "" {
+				// weryfikacja czy już nie istnieje w bazie
+				locationInsertedId := app.findRec("location_id", "locations", location)
+
+				// jeżeli nie to dodaje nowy rekord do słownika locations
+				if locationInsertedId == 0 {
+					locationInsertedId = app.addLocation(location, geo)
+				}
+
+				// podpięcie lokalizacji do wydarzenia historycznego
+				app.updateFact(insertedId, locationInsertedId)
 			}
 
 			// uzupełnienie bazy źródeł dla wydarzenia historycznego
