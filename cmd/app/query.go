@@ -10,18 +10,23 @@ var sqlCreateDb string = `
         DROP TABLE IF EXISTS keywords;
         DROP TABLE IF EXISTS fact_keyword;
 
-        CREATE TABLE facts (fact_id INTEGER PRIMARY KEY, 
-                            number TEXT NOT NULL,
-                            date TEXT,
-                            day INTEGER NOT NULL, 
-                            month INTEGER NOT NULL,
-                            year INTEGER NOT NULL,
-                            title TEXT,
-                            content TEXT,
-                            content_twitter TEXT,
-                            location_id INT,
-                            image TEXT,
-                            image_info TEXT
+        CREATE TABLE facts (
+			fact_id INTEGER PRIMARY KEY, 
+            number TEXT NOT NULL,
+            date TEXT,
+            day INTEGER NOT NULL, 
+            month INTEGER NOT NULL,
+            year INTEGER NOT NULL,
+            title TEXT,
+            content TEXT,
+            content_twitter TEXT,
+            location_id INT,
+            image TEXT,
+            image_info TEXT,
+			FOREIGN KEY (location_id) 
+            	REFERENCES locations(location_id)
+                ON UPDATE CASCADE
+                ON DELETE RESTRICT
         );
         CREATE INDEX idx_facts_date ON facts(year, month, day);
 
@@ -78,7 +83,7 @@ var sqlCreateDb string = `
             url_name TEXT,
             url TEXT,
             FOREIGN KEY (fact_id)
-                   REFERENCES facts (fact_id) 
+                REFERENCES facts (fact_id) 
                 ON UPDATE CASCADE
                 ON DELETE RESTRICT   
         );
